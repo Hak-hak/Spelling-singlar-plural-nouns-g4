@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Spelling Game</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+    :root {
+      --min-tap-target: 48px;
+    }
+    body {
+      margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh;
+      font-family: Arial, sans-serif; overflow: hidden;
+      background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ce79);
+      background-size: 400%; animation: colorShift 15s ease infinite;
+    }
+    @keyframes colorShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    #game-container {
+      text-align: center; width: 95vw; max-width: 800px; padding: clamp(15px, 3vw, 30px);
+      box-sizing: border-box; background: rgba(255, 255, 255, 0.9); border-radius: 15px; position: relative; z-index: 1;
+    }
+    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; }
+    #letter-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(var(--min-tap-target), 1fr)); gap: clamp(10px, 2vw, 20px); margin: 20px 0; }
+    #word-area { display: flex; justify-content: center; align-items: center; gap: clamp(8px, 1.5vw, 15px); margin: 20px auto; min-height: var(--min-tap-target); flex-wrap: wrap; }
+
+    .letter-btn, .word-letter {
+      display: flex; justify-content: center; align-items: center;
+      padding: 0 clamp(10px, 2vw, 20px); min-width: var(--min-tap-target); height: var(--min-tap-target);
+      font-size: clamp(1rem, 5vw, 2rem); color: white; border: none; border-radius: 8px; box-sizing: border-box; touch-action: manipulation;
+    }
+    .letter-btn { background-color: #4CAF50; cursor: pointer; transition: background-color 0.2s ease, transform 0.1s ease; }
+    .letter-btn:hover:not(:disabled) { background-color: #45a049; }
+    .letter-btn:active:not(:disabled) { transform: scale(0.95); }
+    .letter-btn:disabled { background-color: #cccccc; cursor: not-allowed; opacity: 0.7; }
+    .letter-btn.shake { animation: shake 0.5s ease; }
+    .letter-btn.blink { animation: blink 1s ease infinite; }
+    .word-letter { background-color: #008CBA; }
+    .word-letter.highlight { background-color: #FFFF00; color: #000; }
+
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); } 20%, 40%, 60%, 80% { transform: translateX(5px); } }
+    @keyframes blink { 0%, 100% { background-color: #4CAF50; } 50% { background-color: #FFD700; } }
+
+    #message { font-size: clamp(1.2rem, 5vw, 2rem); margin: 15px 0; color: #333; min-height: 2.5em; word-wrap: break-word; font-weight: bold; }
+    #score { font-size: clamp(0.9rem, 3.5vw, 1.2rem); margin: 10px 0; color: #333; }
+    #button-area button {
+      padding: clamp(10px, 2.5vw, 15px) clamp(15px, 4vw, 25px); font-size: clamp(0.9rem, 3.5vw, 1.25rem);
+      cursor: pointer; color: white; border: none; border-radius: 8px; margin: 5px; touch-action: manipulation; transition: background-color 0.2s ease;
+    }
+    #start-btn, #listen-btn, #pause-btn, #restart-btn { background-color: #008CBA; }
+    #start-btn:hover, #listen-btn:hover, #pause-btn:hover, #restart-btn:hover { background-color: #006d93; }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <div id="button-area">
+      <button id="start-btn">Start Game</button>
+      <button id="listen-btn" style="display: none;">Listen Again</button>
+      <button id="pause-btn" style="display: none;">Pause</button>
+      <button id="restart-btn" style="display: none;">Play Again</button>
+    </div>
+    <div id="score">Words completed: 0/57</div>
+    <div id="word-area"></div>
+    <div id="letter-buttons"></div>
+    <div id="message" aria-live="polite">Welcome! Press Start Game.</div>
+  </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  const words = [
+    {en: "child", vi: "đứa trẻ", emoji: "👶"},
+    {en: "deer", vi: "con nai", emoji: "🦌"},
+    {en: "toes", vi: "ngón chân", emoji: "🦶"},
+    {en: "trees", vi: "cây cối", emoji: "🌳"},
+    {en: "cars", vi: "xe hơi", emoji: "🚗"},
+    {en: "dress", vi: "cái váy", emoji: "👗"},
+    {en: "geese", vi: "con ngỗng", emoji: "🦢"},
+    {en: "socks", vi: "đôi tất", emoji: "🧦"},
+    {en: "apple", vi: "quả táo", emoji: "🍎"},
+    {en: "mice", vi: "con chuột", emoji: "🐭"},
+    {en: "roses", vi: "hoa hồng", emoji: "🌹"},
+    {en: "ears", vi: "đôi tai", emoji: "👂"},
+    {en: "people", vi: "mọi người", emoji: "👨‍👩‍👧‍👦"},
+    {en: "story", vi: "câu chuyện", emoji: "📖"},
+    {en: "fish", vi: "con cá", emoji: "🐟"},
+    {en: "arms", vi: "cánh tay", emoji: "💪"},
+    {en: "hair", vi: "mái tóc", emoji: "👱‍♀️"},
+    {en: "days", vi: "ngày", emoji: "🗓️"},
+    {en: "feet", vi: "bàn chân", emoji: "👣"},
+    {en: "fox", vi: "con cáo", emoji: "🦊"},
+    {en: "pencil", vi: "bút chì", emoji: "✏️"},
+    {en: "kites", vi: "con diều", emoji: "🪁"},
+    {en: "stories", vi: "câu chuyện", emoji: "📚"},
+    {en: "elephant", vi: "con voi", emoji: "🐘"},
+    {en: "cakes", vi: "bánh ngọt", emoji: "🍰"},
+    {en: "flower", vi: "bông hoa", emoji: "🌸"},
+    {en: "tables", vi: "cái bàn", emoji: "🪑"},
+    {en: "tail", vi: "cái đuôi", emoji: "🐒"},
+    {en: "kids", vi: "trẻ em", emoji: "🧒"},
+    {en: "ring", vi: "nhẫn", emoji: "💍"},
+    {en: "wolves", vi: "chó sói", emoji: "🐺"},
+    {en: "banana", vi: "quả chuối", emoji: "🍌"},
+    {en: "stars", vi: "ngôi sao", emoji: "⭐"},
+    {en: "nest", vi: "cái tổ", emoji: "🪺"},
+    {en: "potatoes", vi: "khoai tây", emoji: "🥔"},
+    {en: "shirts", vi: "áo sơ mi", emoji: "👕"},
+    {en: "bed", vi: "cái giường", emoji: "🛏️"},
+    {en: "toy", vi: "đồ chơi", emoji: "🧸"},
+    {en: "newspaper", vi: "báo", emoji: "📰"},
+    {en: "butterflies", vi: "con bướm", emoji: "🦋"},
+    {en: "meal", vi: "bữa ăn", emoji: "🍲"},
+    {en: "dolphins", vi: "cá heo", emoji: "🐬"},
+    {en: "cats", vi: "con mèo", emoji: "🐈"},
+    {en: "city", vi: "thành phố", emoji: "🏙️"},
+    {en: "doll", vi: "búp bê", emoji: "🎎"},
+    {en: "magazines", vi: "tạp chí", emoji: "🗞️"},
+    {en: "teeth", vi: "răng", emoji: "🦷"},
+    {en: "bread", vi: "bánh mì", emoji: "🍞"},
+    {en: "doctor", vi: "bác sĩ", emoji: "👩‍⚕️"},
+    {en: "birds", vi: "con chim", emoji: "🐦"},
+    {en: "balloon", vi: "bóng bay", emoji: "🎈"},
+    {en: "plants", vi: "thực vật", emoji: "🌱"},
+    {en: "spider", vi: "con nhện", emoji: "🕷️"},
+    {en: "pictures", vi: "bức tranh", emoji: "🖼️"},
+    {en: "balls", vi: "quả bóng", emoji: "⚽"},
+    {en: "park", vi: "công viên", emoji: "🏞️"},
+    {en: "maths", vi: "toán học", emoji: "🧮"}
+  ];
+
+  let gameWords = [];
+  let currentWord, currentLetters, letterButtons;
+  let fireworks = [];
+  let synth, englishVoice;
+  let gameStarted = false;
+  let currentLetterIndex = 0;
+  let wordCount = 0;
+  let waitingForCorrectLetter = false;
+  let finaleInterval;
+
+  const totalWords = words.length;
+  const gameContainer = document.getElementById('game-container');
+  const startBtn = document.getElementById('start-btn');
+  const listenBtn = document.getElementById('listen-btn');
+  const pauseBtn = document.getElementById('pause-btn');
+  const restartBtn = document.getElementById('restart-btn');
+  const scoreEl = document.getElementById('score');
+  const wordArea = document.getElementById('word-area');
+  const letterButtonsContainer = document.getElementById('letter-buttons');
+  const messageEl = document.getElementById('message');
+
+  function loadVoices() {
+    const voices = synth.getVoices();
+    englishVoice = voices.find(voice => voice.lang.startsWith('en-US')) || voices.find(voice => voice.lang.startsWith('en'));
+    if (englishVoice) {
+      startBtn.disabled = false;
+      messageEl.innerText = "Ready! Press Start Game.";
+    } else if (synth.onvoiceschanged !== undefined) {
+      synth.onvoiceschanged = loadVoices;
+    } else { setTimeout(loadVoices, 100); }
+  }
+
+  window.setup = function() {
+    let p5canvas = createCanvas(gameContainer.offsetWidth, gameContainer.offsetHeight);
+    p5canvas.parent('game-container');
+    synth = window.speechSynthesis;
+    startBtn.disabled = true;
+    messageEl.innerText = "Loading voices...";
+    loadVoices();
+    scoreEl.innerText = `Words completed: 0/${totalWords}`; // Cập nhật score ban đầu
+  }
+
+  window.windowResized = function() { resizeCanvas(gameContainer.offsetWidth, gameContainer.offsetHeight); }
+  
+  function initializeNewGame() {
+    synth.cancel();
+    clearInterval(finaleInterval);
+    wordCount = 0;
+    gameStarted = true;
+    gameWords = shuffle([...words]);
+
+    startBtn.style.display = 'none';
+    listenBtn.style.display = 'inline-block';
+    pauseBtn.style.display = 'inline-block';
+    restartBtn.style.display = 'inline-block';
+    
+    startNextRound();
+  }
+
+  function startNextRound() {
+    if (gameWords.length === 0) {
+      handleGameWin();
+      return;
+    }
+
+    waitingForCorrectLetter = false;
+    currentLetterIndex = 0;
+    fireworks = [];
+    
+    scoreEl.innerText = `Words completed: ${wordCount}/${totalWords}`;
+    let wordObj = gameWords.pop();
+    currentWord = wordObj;
+    currentLetters = currentWord.en.toUpperCase().split('');
+    
+    messageEl.innerText = "Listen and click the letters!";
+    wordArea.innerHTML = "";
+    
+    let shuffledLetters = shuffle([...currentLetters]);
+    createLetterButtons(shuffledLetters);
+
+    spellNextLetter();
+  }
+  
+  function handleGameWin() {
+    gameStarted = false;
+    wordArea.innerHTML = "";
+    letterButtonsContainer.innerHTML = "";
+    
+    messageEl.setAttribute('aria-label', 'Congratulations! You have completed all words!');
+    messageEl.innerHTML = `<span aria-hidden="true">🎉 Chúc mừng! 🎉<br/>Bạn đã hoàn thành tất cả các từ!</span>`;
+    
+    listenBtn.style.display = 'none';
+    pauseBtn.style.display = 'none';
+
+    let fireworksCount = 0;
+    finaleInterval = setInterval(() => {
+        createFireworks(true);
+        fireworksCount++;
+        if (fireworksCount >= 10) {
+            clearInterval(finaleInterval);
+        }
+    }, 500);
+  }
+
+  function createLetterButtons(letters) {
+    letterButtonsContainer.innerHTML = "";
+    letterButtons = []; 
+    letters.forEach((letter) => {
+      let btn = document.createElement('button');
+      btn.innerText = letter;
+      btn.className = 'letter-btn';
+      btn.dataset.letter = letter; 
+      btn.onclick = () => selectLetter(btn);
+      letterButtonsContainer.appendChild(btn);
+      letterButtons.push(btn); 
+    });
+  }
+  
+  function selectLetter(button) {
+    if (!gameStarted || button.disabled) return;
+
+    const selectedLetter = button.dataset.letter;
+    const expectedLetter = currentLetters[currentLetterIndex];
+
+    if (selectedLetter === expectedLetter) {
+      waitingForCorrectLetter = false;
+      button.disabled = true;
+
+      let letterDiv = document.createElement('div');
+      letterDiv.innerText = selectedLetter;
+      letterDiv.className = 'word-letter';
+      wordArea.appendChild(letterDiv);
+      
+      currentLetterIndex++;
+      updateButtonStates();
+
+      if (currentLetterIndex === currentLetters.length) {
+        handleCorrectWord();
+      } else {
+        messageEl.innerText = `Great! Keep going...`;
+        setTimeout(spellNextLetter, 300);
+      }
+    } else {
+      synth.cancel();
+      waitingForCorrectLetter = true;
+      button.classList.add('shake');
+      setTimeout(() => button.classList.remove('shake'), 500);
+      messageEl.innerText = "Oops! Try again.";
+      updateButtonStates();
+    }
+  }
+  
+  function updateButtonStates() {
+    if (!gameStarted) return;
+    const expectedLetter = currentLetters[currentLetterIndex];
+    
+    letterButtons.forEach(btn => {
+      btn.classList.remove('shake', 'blink');
+      if (btn.disabled) return;
+      if (waitingForCorrectLetter && btn.dataset.letter === expectedLetter) {
+        btn.classList.add('blink');
+      }
+    });
+  }
+  
+  function handleCorrectWord() {
+    wordCount++;
+    scoreEl.innerText = `Words completed: ${wordCount}/${totalWords}`;
+    gameStarted = false;
+    
+    spellSuperQuickly(() => {
+        messageEl.innerHTML = `Correct! <b>${currentWord.en}</b> <span aria-hidden="true">: ${currentWord.vi} ${currentWord.emoji}</span>`;
+        speak(currentWord.en, 0.8);
+        createFireworks(false);
+        
+        setTimeout(() => {
+            gameStarted = true;
+            startNextRound();
+        }, 3000);
+    });
+  }
+
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array;
+  }
+
+  function speak(text, rate = 0.8) {
+    synth.cancel();
+    let utterance = new SpeechSynthesisUtterance(text);
+    if (englishVoice) { utterance.voice = englishVoice; }
+    utterance.volume = 1.0; utterance.rate = rate;
+    synth.speak(utterance);
+    return utterance;
+  }
+
+  function spellNextLetter() {
+    if (!gameStarted || waitingForCorrectLetter || currentLetterIndex >= currentLetters.length) return;
+    speak(currentLetters[currentLetterIndex]);
+  }
+
+  function spellSuperQuickly(callback) {
+      synth.cancel();
+      let tempIndex = 0;
+      const letterDivs = wordArea.getElementsByClassName('word-letter');
+
+      function spellNext() {
+          if (tempIndex >= currentLetters.length) {
+              if (callback) callback();
+              return;
+          }
+          let letter = currentLetters[tempIndex];
+          let utterance = speak(letter, 2.5);
+          utterance.onstart = () => { if (letterDivs[tempIndex]) letterDivs[tempIndex].classList.add('highlight'); };
+          utterance.onend = () => {
+              if (letterDivs[tempIndex]) letterDivs[tempIndex].classList.remove('highlight');
+              tempIndex++;
+              spellNext();
+          };
+      }
+      spellNext();
+  }
+
+  function createFireworks(randomPosition) {
+    let xCenter, yCenter;
+    if (randomPosition) {
+        xCenter = random(width * 0.2, width * 0.8);
+        yCenter = random(height * 0.2, height * 0.8);
+    } else {
+        let rect = wordArea.getBoundingClientRect();
+        if (!rect.width) return; // Tránh lỗi nếu khu vực từ chưa hiển thị
+        let containerRect = gameContainer.getBoundingClientRect();
+        xCenter = rect.left + rect.width / 2 - containerRect.left;
+        yCenter = rect.top + rect.height / 2 - containerRect.top;
+    }
+
+    for (let i = 0; i < 30; i++) {
+      fireworks.push({
+        x: xCenter, y: yCenter, vx: random(-5, 5), vy: random(-10, -3),
+        color: color(random(200, 255), random(100, 255), random(100, 255)), life: 60
+      });
+    }
+  }
+
+  window.draw = function() {
+    if (fireworks.length === 0) { clear(); return; }
+    clear();
+    for (let i = fireworks.length - 1; i >= 0; i--) {
+      let f = fireworks[i];
+      f.x += f.vx; f.y += f.vy; f.vy += 0.2; f.life--;
+      if (f.life <= 0) { fireworks.splice(i, 1); continue; }
+      fill(f.color); noStroke(); ellipse(f.x, f.y, 5, 5);
+    }
+  }
+
+  startBtn.onclick = initializeNewGame;
+  restartBtn.onclick = initializeNewGame;
+  listenBtn.onclick = () => { if(gameStarted) spellNextLetter(); };
+  pauseBtn.onclick = () => {
+    if (!gameStarted) return;
+    synth.cancel();
+    waitingForCorrectLetter = false;
+    updateButtonStates();
+    messageEl.innerText = "Paused. Press Listen Again to resume.";
+  };
+});
+</script>
+</body>
+</html>
